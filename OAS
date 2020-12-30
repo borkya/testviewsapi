@@ -1,0 +1,589 @@
+swagger: '2.0'
+info:
+  version: '1.0'
+  title: NF Annuity Workflow V1
+  description: >
+    This API provides operations for searching, updating, and creating
+    annuity workflow items and documents. 
+    A "document" is a viewable document such as a PDF that has associated 
+    index information.  A document will be associated with one or more work items.
+    A "document content" is the actual raw content of the document. 
+    A "Work Item" is also known as a Transaction or Request in some systems, is a
+    unit of work that groups documents. A work item is used for two specific purposes
+    1. A single unit of work processed in workflow
+    2. A group of documents that are related and share attributes
+  contact:
+    name: NWLine-With A Passion IW
+    email: NWLine-With_A_Passion_IW@nationwide.com
+host: api.nationwide.com
+schemes:
+  - https
+basePath: /customer-acquisition/nf-annuity-workflow/v1    
+produces:
+  - application/json
+consumes:
+  - application/json
+
+tags:
+  - name: Work Item Creation
+    description: Operations to create work items.
+  - name: Work Item Retrieval
+    description: Operations to search for and retrieve Work Items.
+  - name: Work Item Modification
+    description: Operations for modifying Work Items.
+  - name: Document Creation
+    description: Operations for creating documents.  Document creation is done in two steps.  An intial call is made to store the content (POST /documentContents). 
+      this returns an ID that is then used in the actual document creation.  Documents can only be created in the context of a 
+      work item (POST /work-items).
+  - name: Document Retrieval
+    description: Operations to search for and retrieve documents.    
+  - name: User Metadata Retrieval
+    description: Operations for retrieving the user specific metadata information for team, workItem type, document type.
+securityDefinitions:
+  MyAPIKey:
+    type: apiKey
+    in: header
+    name: client_id
+  nw_auth_internal:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: 'https://api-int.nwie.net/security-processing/enterprise-user-auth/v2/authorize'
+    scopes: {}
+  nw_auth_external:
+    type: oauth2
+    flow: implicit
+    authorizationUrl: 'https://api.nationwide.com/security-processing/enterprise-user-auth/v2/authorize'
+    scopes: {}     
+security:
+  - MyAPIKey: []
+  - nw_auth_internal: []
+  - nw_auth_external: []
+
+parameters:
+  message_id_header:
+    name: X-NW-Message-ID
+    type: string
+    in: header
+    required: true
+    description: A unique identification number for each message.
+  client_id:
+    name: client_id
+    type: string
+    in: header
+    required: true
+    description: The API key of the application 
+ 
+paths:
+  '/work-items':
+    post:
+      summary: Creates a workflow item
+      tags:
+      - Work Item Creation
+      description: Create a new work item.  Work items can be created using existing documents or the
+        documents associated with a work item can be created at the same time as the work item.  
+      parameters:
+      - $ref: '#/parameters/client_id'
+      - $ref: '#/parameters/message_id_header'
+      - name: work-item
+        in: body
+        required: true
+        schema:
+          type: object
+          required: ["type","team","status","documents"]
+          properties:
+            matching:
+              type: string
+              description: The type of systematic matching to be done.
+              example: "STANDARD"
+              "enum": ["NONE","STANDARD"]
+              default: "NONE"
+            type: 
+              type: string
+              description: This is the workflow item type description.
+              example: "Contracting"
+            team:
+              type: string
+              description: This is the team description.
+              example: "GA AGREEMENTS"
+            status:
+              type: string
+              description: The status of the workflow item. 
+              enum: ["OPEN", "CLOSED", "CANCELLED"]
+            agreement:
+              description: This is the agreement associated with the workflow item. 
+              $ref: '#/definitions/Agreement'
+            documents:
+              type: array
+              description: These are the documents associated with the workflow item.
+              items:
+                $ref: '#/definitions/WorkItemDocumentCreate'
+            source:
+              type: string
+              example: 'SALESFORCE'
+              description: This is a source identifier for the work.  This will be provided when onboarded.          
+      responses:
+        '200':
+          description: Successful creation of the work item
+          schema:
+            $ref: '#/definitions/WorkItem'
+        '400':
+          description: There was a problem with the input provided. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+        '500':
+          description: There was a problem with either the network or the server. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+  '/work-items/{id}':
+    get:
+      summary: Return a work item given an unique ID
+      tags:
+        - Work Item Retrieval
+      description: >
+        'Retreive a work item by its internal ID'
+      parameters:
+        - $ref: '#/parameters/message_id_header'
+        - $ref: '#/parameters/client_id'
+        - name: id
+          in: path
+          required: true
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Successful retrieval of requested resource instance(s)
+          schema:
+            $ref: '#/definitions/WorkItem'
+        '400':
+          description: There was a problem with the input provided. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+        '404':
+          description: Requested resource was not found
+          schema:
+            $ref: '#/definitions/StandardMessage'
+        '500':
+          description: There was a problem with either the network or the server. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage' 
+  '/work-items/{id}/documents':
+    post:    
+      summary: Add a document to an existing work item
+      tags:
+        - Work Item Modification
+        - Document Creation
+      description: >
+        This call can create a new document and add it to an existing work item or
+        add an existing document to an existing work item.
+      consumes:
+        - application/json  
+      parameters:
+        - $ref: '#/parameters/client_id'
+        - $ref: '#/parameters/message_id_header'
+        - name: id
+          in: path
+          required: true
+          type: integer
+          format: int64
+        - name: document
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/WorkItemDocumentCreate'      
+      responses:
+        '200':
+          description: Resource created
+          schema:
+              $ref: '#/definitions/Document'
+        '400':
+          description: There was a problem with the input provided. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+        '500':
+          description: There was a problem with either the network or the server. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'             
+  '/documents/search':
+    post:
+      summary: Find a document given search criteria
+      tags:
+        - Document Retrieval
+      description: >
+        'Get a document list given search criteria'
+      parameters:
+        - $ref: '#/parameters/client_id'
+        - $ref: '#/parameters/message_id_header'
+        - name: document
+          in: body
+          required: true
+          schema:
+            type: object
+            properties:
+              type:
+                type: string
+                description: This is the document type description.
+                example: "Contracting Detail"   
+              createDateRangeStart: 
+                type: string                
+                format: date-time
+                description: This will limit the documents to those created on or after this date. Note that this date is in RFC3339 format.
+                example: "2018-04-12T23:20:50.52Z"
+              createDateRangeEnd: 
+                type: string
+                format: date-time
+                description: This will limit the documents to those created before this date.  Note that this date is in RFC3339 format.
+                example: "2018-04-12T23:20:50.52Z"
+              agreement:
+                description: This will limit the documents to the associated agreements.
+                $ref: '#/definitions/Agreement'
+      responses:
+        '200':
+          description: Successful retrieval of requested resource instance(s)
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/DocumentSearchResponse'
+        '400':
+          description: There was a problem with the input provided. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+        '404':
+          description: Referenced work item was not found
+          schema:
+            $ref: '#/definitions/StandardMessage'
+        '500':
+          description: There was a problem with either the network or the server. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+  '/documents/{id}/content':
+    get:
+      summary: Get the content of a document by document ID
+      description: The content of a document is the raw data.  This will be returned with proper content-type and content-disposition
+        when available.  Directly accessing this URL from a browser will open the document using the default application for the
+        file type.
+      tags:
+      - Document Retrieval      
+      parameters:
+        - name: id
+          in: path
+          type: integer
+          format: int64
+          required: true
+      responses:
+        '200':
+          description: Successful retrieval of the document content
+          schema:
+            type: string
+  '/document-contents':
+    post:
+      summary: Store the content of a document
+      description: A document-contents object is a 
+        temporary object that contains the raw content of a document.  A reference to
+        a document-content object will expire in 24 hours if not used.  This is only
+        used as part of document creation.
+      consumes:
+        - application/pdf
+        - image/tiff
+        - text/plain
+        - any
+      tags:
+        - Document Creation
+      parameters:
+        - $ref: '#/parameters/client_id'
+        - $ref: '#/parameters/message_id_header'      
+        - name: content-type
+          type: string
+          in: header
+          required: true
+          description: The content type of the document being uploaded    
+        - name: content-disposition
+          type: string
+          in: header
+          required: false
+          description: The content disposition, often includes the original file name of the document   
+        - name: data
+          in: body
+          description: The raw data for the document.  This is binary data.
+          schema:
+            type: string
+            format: binary
+      responses:
+        '200':
+          description: Successful creation of document content
+          schema:
+            type: object
+            properties:
+              id:
+                type: string
+                example: "3992932342"
+                description: The id of the newly created document
+        '400':
+          description: There was a problem with the input provided. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+        '500':
+          description: There was a problem with either the network or the server. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'
+  '/users/{realm}/{username}/workflow/access?action=':
+    get:
+      summary: Get a metadata details for the given field team, documentType, transactionType
+      tags:
+        - User Metadata Retrieval
+      description: >
+        Get the team, workitem type and document type metadata details for specific username, realm and action
+      parameters:
+        - $ref: '#/parameters/client_id'
+        - $ref: '#/parameters/message_id_header'
+        - name: realm
+          in: path
+          required: true
+          type: string
+        - name: username
+          in: path
+          required: true
+          type: string          
+        - name: action
+          in: query
+          type: string                    
+      responses:
+        '200':
+          description: Successful retrieval of requested metadata
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/ActionTeamWorkDocType'
+        '400':
+          description: There was a problem with the input provided. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'            
+        '500':
+          description: There was a problem with either the network or the server. Please see the included message for more details.
+          schema:
+            $ref: '#/definitions/StandardMessage'  
+definitions:
+  WorkItem:
+    type: object
+    properties:
+      id:
+        type: number
+        description: This is the generated workflow item system id.
+        example: 8675309
+      type: 
+        type: string
+        description: This is the workflow item type description.
+        example: "Contracting"
+      team:
+        type: string
+        description: This is the team description.
+        example: "GA AGREEMENTS"
+      status:
+        type: string
+        description: The status of the workflow item. 
+        enum: ["OPEN", "CLOSED", "CANCELLED"]
+      agreement:
+        description: This is the agreement associated with the workflow item. 
+        $ref: '#/definitions/Agreement'
+      documents:
+        type: array
+        description: These are the documents associated with the workflow item.
+        items:
+          $ref: '#/definitions/Document'
+  Agreement:
+    type: object
+    properties:
+      type:
+        type: string
+        description: This is the agreement type description.
+        example: "Contract"
+      number:
+        type: string
+        description: This is the agreement number.
+        example: "0107834736"          
+  Document:
+    type: object
+    properties:
+      id: 
+        type: number
+        description: This is the document id.
+        example: 123456
+      type:
+        type: string
+        description: This is the document type description.
+        example: "Contracting Detail"   
+      createDate:
+        type: string
+        description: This is the document create date.
+        example: "2020-11-30T21:35:22Z"   
+      documentContentId: 
+        type: string
+        description: This is the document content identifier for the document.  If using FileNet
+          to store document content this is the FileNet Guid
+        example: "21234444"
+      publicationStatus:
+        type: string
+        description: This is the document publication status.
+  WorkItemDocumentCreate:
+    type: object
+    properties:
+      id: 
+        type: number
+        description: If this is passed then an existing document will be associated with the transaction.  No other fields can be passed in this case.
+        example: 123456
+      type:
+        type: string
+        description: This is the document type description.
+        example: "Contracting Detail"   
+      documentContentId: 
+        type: string
+        description: This is the document content identifier for the document.  This is generated by a post to /documentContents.
+        example: "21234444" 
+      source:
+        type: string
+        maxLength: 60
+        description: Original source of the document. 
+        example: "Salesforce" 
+  DocumentSearchResponse:
+    type: object
+    properties:
+      id: 
+        type: number
+        description: This is the document id.
+        example: 123456
+      type:
+        type: string
+        description: This is the document type description.
+        example: "Contracting Detail"   
+      createDate:
+        type: string
+        description: This is the document creation date in RFC3339 format.
+        example: "2018-04-12T23:20:50.52Z"   
+      documentContentId: 
+        type: string
+        description: This is the document content identifier for the document.  If using FileNet to store document content this is the FileNet Guid
+        example: "21234444" 
+      publicationStatus: 
+        type: string
+        description: This is the status of the document publication.
+        example: "Published" 
+  Team:
+    type: object
+    readOnly: true
+    properties:
+      serviceCenter:
+        type: string
+        readOnly: true
+        description: serviceCenter associated with team
+        example: "IN RETIREMENT" 
+      name:
+        type: string
+        readOnly: true
+        description: team description
+        example: "DEFERRED COMP" 
+  WorkItemType:
+    type: object
+    readOnly: true
+    properties:
+      name:
+        type: string
+        readOnly: true
+        description: workItem type description
+        example: "Death Benefit" 
+      isFinancial:
+        type: string
+        readOnly: true
+        description: workItem type is financial
+        example: "N" 
+      isMatchable:
+        type: string
+        readOnly: true
+        description: workItem type is matchable
+        example: "Y" 
+  DocumentType:
+    type: object
+    readOnly: true
+    properties:
+      name:
+        type: string
+        readOnly: true
+        description: document type description
+        example: "Prospectus" 
+      isFinancial:
+        type: string
+        readOnly: true
+        description: document type is financial
+        example: "N" 
+      isSecured:
+        type: string
+        readOnly: true
+        description: document type is secured
+        example: "N" 
+  TeamWorkTypeDocumentType:
+    type: object
+    readOnly: true
+    properties:
+      team:
+        description: This is the team associated with the combination of team, work type and document type. 
+        $ref: '#/definitions/Team'
+      workItemType:
+        description: This is the workitem type associated with the combination of team, worktype and document type. 
+        $ref: '#/definitions/WorkItemType'
+      documentType:
+        description: This is the document type associated with the combination of team, worktype and document type. 
+        $ref: '#/definitions/DocumentType'
+  ActionTeamWorkDocType:
+    type: object
+    readOnly: true
+    properties:
+      action:
+        type: string
+        readOnly: true
+        description: This is action which is user going to perform with combination of team, worktype and document type. 
+        example: "CREATE_WORKITEM"       
+      teamWorkTypeDocumentType:
+        type: array
+        description: List of teamWorkTypeDocumentType.
+        items:
+          $ref: '#/definitions/TeamWorkTypeDocumentType'      
+  StandardMessage:
+    type: object
+    required:
+      - userMessage
+      - developerMessage
+      - messageId
+    properties:
+      userMessage:
+        type: string
+        description: User-friendly message for the Warning/Error
+      developerMessage:
+        type: string
+        description: Developer information on the Warning/Error
+      messageId:
+        type: string
+        description: >
+          ID of the message provided in the header and used in the API log. This
+          id should be included in any user messaging to assist in
+          troubleshooting.
+      code:
+        type: string
+        description: |
+          Code generated by the API to identify the specific error
+      source:
+        type: string
+        description: |
+          The field or resource which triggered the message
+      docs:
+        type: string
+        description: |
+          The URL to documentation that will provide more information
+      appErrorMessage:
+        type: array
+        items:
+          type: object
+          properties:
+            argumentName:
+              type: string
+            path:
+              type: string
+            message:
+              type: string
